@@ -1,0 +1,12 @@
+streamlit==1.42.2
+pandas
+numpy
+plotly
+networkx
+requests
+pyarrow
+fastparquet
+scipy
+scikit-learn
+joblib
+pytest

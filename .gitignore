@@ -1,0 +1,38 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# API Raw Request Caches (prevent committing hundreds of small cached API responses)
+data/raw/gwas_cache/
+data/raw/transcripts_cache/
+
+# Sensitive environment variables or keys (if any are added in the future)
+.env
+*.pem
+*.key
