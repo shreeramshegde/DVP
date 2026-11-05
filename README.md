@@ -50,12 +50,13 @@ streamlit run app.py
 ```
 
 ## 10. Dashboard Pages
-- **Overview**: High-level KPIs and summary charts.
-- **Variant Explorer**: Filter and explore ClinVar variants.
-- **Gene / Phenotype Explorer**: Cross-dataset view of a specific gene.
-- **Disease / Phenotype Explorer**: HPO annotations for diseases.
-- **GWAS Explorer**: GWAS traits and associations.
-- **Network Explorer**: Interactive neighborhood graph.
+- **Overview**: High-level KPIs and summary charts with dynamic plot-type toggles.
+- **Variant Explorer**: Filter and explore ClinVar variants, significance, and clinical conditions.
+- **Gene / Phenotype Explorer**: Cross-dataset view of a specific gene (HPO phenotypes, ClinVar conditions, GWAS traits).
+- **Disease / Phenotype Explorer**: HPO annotations for diseases with customizable charts.
+- **GWAS Explorer**: GWAS traits, genes, and associations with dynamic graph types.
+- **Network Explorer**: Interactive force-directed neighborhood graph.
+- **Interactive Chart Studio**: Universal custom graph builder allowing users to plot any dataset (ClinVar, GWAS, HPO, Relationships, ML sequences) using 10 different chart types (Bar V/H, Pie/Donut, Line, Area, Scatter, Treemap, Box Plot, Histogram, Funnel), customizable axes, Top-N filters, and color themes.
 - **Data Sources & Methodology**: Data provenance, schemas, and citation details.
 - **DNA Sequence Disease Classifier**: Machine Learning sequence verification, multi-class disease prediction, driving k-mer motif attribution, and metrics justification.
 

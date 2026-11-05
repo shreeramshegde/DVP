@@ -76,13 +76,20 @@ def clean_clinvar(records):
         genes_list = r.get("genes", [])
         gene_symbol = genes_list[0].get("symbol") if genes_list else r.get("_query_gene")
         
-        trait_set = r.get("trait_set", [])
-        conditions = [t.get("trait_name") for t in trait_set if t.get("trait_name")]
-        condition = conditions[0] if conditions else "Not provided"
+        # Extract conditions from trait_set or germline_classification
+        conditions = []
+        if r.get("trait_set"):
+            conditions.extend([t.get("trait_name") for t in r.get("trait_set", []) if t.get("trait_name")])
+        gc = r.get("germline_classification") or {}
+        if isinstance(gc, dict) and gc.get("trait_set"):
+            conditions.extend([t.get("trait_name") for t in gc.get("trait_set", []) if t.get("trait_name")])
+            
+        valid_conditions = [c.strip() for c in conditions if c and c.strip().lower() not in ["not provided", "not specified"]]
+        condition = valid_conditions[0] if valid_conditions else "Not provided"
         
-        sig_info = r.get("clinical_significance", {})
-        sig = sig_info.get("description", "Not provided")
-        review_status = sig_info.get("review_status", "Not provided")
+        # Extract clinical significance and review status
+        sig = gc.get("description") or (r.get("clinical_significance", {}) or {}).get("description", "Not provided")
+        review_status = gc.get("review_status") or (r.get("clinical_significance", {}) or {}).get("review_status", "Not provided")
         
         variation_set = r.get("variation_set", [])
         var_type = variation_set[0].get("variation_name", "") if variation_set else ""

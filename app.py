@@ -101,6 +101,12 @@ def load_data():
             data['summary'] = pd.read_csv(ENTITY_SUMMARY_CSV)
         else:
             data['summary'] = pd.DataFrame()
+
+        ml_seq_file = Path(__file__).resolve().parent / "data" / "processed" / "ml_sequences.parquet"
+        if ml_seq_file.exists():
+            data['ml_seq'] = pd.read_parquet(ml_seq_file)
+        else:
+            data['ml_seq'] = pd.DataFrame()
             
     except Exception as e:
         st.error(f"Error loading data: {e}")
@@ -119,6 +125,7 @@ pages = [
     "Disease / Phenotype Explorer", 
     "GWAS Explorer", 
     "Network Explorer",
+    "Interactive Chart Studio",
     "Data Sources & Methodology",
     "DNA Sequence Disease Classifier"
 ]
@@ -148,6 +155,58 @@ def get_csv_download_link(df, filename="data.csv"):
         mime='text/csv',
     )
 
+def render_dynamic_chart(df, x_col, y_col, title, default_type="Bar (Vertical)", key="", height=340, color_sequence=None):
+    """
+    Renders an interactive chart with a dynamic graph type selector,
+    allowing the user to switch between Bar, Horizontal Bar, Donut, Line, Area, Treemap, and Funnel.
+    """
+    if df is None or df.empty:
+        st.info(f"No data available for {title}")
+        return
+
+    chart_types = ["Bar (Vertical)", "Bar (Horizontal)", "Pie / Donut", "Line", "Area", "Treemap", "Funnel"]
+    default_idx = chart_types.index(default_type) if default_type in chart_types else 0
+    
+    col_hdr, col_sel = st.columns([3, 2])
+    with col_hdr:
+        st.subheader(title)
+    with col_sel:
+        chosen_type = st.selectbox(
+            f"Graph Type",
+            chart_types,
+            index=default_idx,
+            key=f"dyn_chart_{key}_{x_col}_{y_col}",
+            label_visibility="collapsed"
+        )
+        
+    palette = color_sequence or ['#00e5ff', '#2979ff', '#00e676', '#ff9100', '#d500f9', '#ffd600', '#ff1744', '#00b0ff']
+    fig = None
+    
+    if chosen_type == "Bar (Vertical)":
+        fig = px.bar(df, x=x_col, y=y_col, template="plotly_dark", color_discrete_sequence=palette)
+    elif chosen_type == "Bar (Horizontal)":
+        fig = px.bar(df, x=y_col, y=x_col, orientation='h', template="plotly_dark", color_discrete_sequence=palette)
+        fig.update_layout(yaxis={'categoryorder':'total ascending'})
+    elif chosen_type == "Pie / Donut":
+        fig = px.pie(df, names=x_col, values=y_col, template="plotly_dark", hole=0.4, color_discrete_sequence=palette)
+    elif chosen_type == "Line":
+        fig = px.line(df, x=x_col, y=y_col, markers=True, template="plotly_dark", color_discrete_sequence=palette)
+    elif chosen_type == "Area":
+        fig = px.area(df, x=x_col, y=y_col, template="plotly_dark", color_discrete_sequence=palette)
+    elif chosen_type == "Treemap":
+        fig = px.treemap(df, path=[x_col], values=y_col, template="plotly_dark", color_discrete_sequence=palette)
+    elif chosen_type == "Funnel":
+        fig = px.funnel(df, x=y_col, y=x_col, template="plotly_dark", color_discrete_sequence=palette)
+
+    if fig:
+        fig.update_layout(
+            height=height,
+            margin=dict(l=10, r=10, t=25, b=25),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
 def show_overview():
     st.title("HUMAN OS Overview")
     
@@ -174,40 +233,30 @@ def show_overview():
     colA, colB = st.columns(2)
     
     with colA:
-        st.subheader("Variant Count by Chromosome")
         if not data['clinvar'].empty:
             chr_counts = data['clinvar']['chromosome'].value_counts().reset_index()
             chr_counts.columns = ['Chromosome', 'Count']
-            fig = px.bar(chr_counts, x='Chromosome', y='Count', template="plotly_dark", color_discrete_sequence=['#2979ff'])
-            st.plotly_chart(fig, use_container_width=True)
+            render_dynamic_chart(chr_counts, 'Chromosome', 'Count', "Variant Count by Chromosome", default_type="Bar (Vertical)", key="ov_chr", color_sequence=['#2979ff'])
             
     with colB:
-        st.subheader("ClinVar Clinical Significance")
         if not data['clinvar'].empty:
             sig_counts = data['clinvar']['clinical_significance'].value_counts().reset_index()
             sig_counts.columns = ['Significance', 'Count']
-            fig = px.pie(sig_counts, names='Significance', values='Count', template="plotly_dark", hole=0.4)
-            st.plotly_chart(fig, use_container_width=True)
+            render_dynamic_chart(sig_counts, 'Significance', 'Count', "ClinVar Clinical Significance", default_type="Pie / Donut", key="ov_sig")
             
     colC, colD = st.columns(2)
     
     with colC:
-        st.subheader("Top Genes by ClinVar Records")
         if not data['clinvar'].empty:
             gene_counts = data['clinvar']['gene'].value_counts().head(10).reset_index()
             gene_counts.columns = ['Gene', 'Count']
-            fig = px.bar(gene_counts, x='Count', y='Gene', orientation='h', template="plotly_dark", color_discrete_sequence=['#00e676'])
-            fig.update_layout(yaxis={'categoryorder':'total ascending'})
-            st.plotly_chart(fig, use_container_width=True)
+            render_dynamic_chart(gene_counts, 'Gene', 'Count', "Top Genes by ClinVar Records", default_type="Bar (Horizontal)", key="ov_gene", color_sequence=['#00e676'])
             
     with colD:
-        st.subheader("Top GWAS Traits")
         if not data['gwas'].empty:
             trait_counts = data['gwas']['trait'].value_counts().head(10).reset_index()
             trait_counts.columns = ['Trait', 'Count']
-            fig = px.bar(trait_counts, x='Count', y='Trait', orientation='h', template="plotly_dark", color_discrete_sequence=['#ff9100'])
-            fig.update_layout(yaxis={'categoryorder':'total ascending'})
-            st.plotly_chart(fig, use_container_width=True)
+            render_dynamic_chart(trait_counts, 'Trait', 'Count', "Top GWAS Traits", default_type="Bar (Horizontal)", key="ov_trait", color_sequence=['#ff9100'])
 
     st.markdown("---")
     st.markdown("### Data Sources")
@@ -256,12 +305,19 @@ def show_variant_explorer():
         with col1:
             chr_counts = df['chromosome'].value_counts().reset_index()
             chr_counts.columns = ['Chromosome', 'Count']
-            st.plotly_chart(px.bar(chr_counts, x='Chromosome', y='Count', title="Variants by Chromosome", template="plotly_dark"), use_container_width=True)
+            render_dynamic_chart(chr_counts, 'Chromosome', 'Count', "Variants by Chromosome", default_type="Bar (Vertical)", key="var_chr", color_sequence=['#2979ff'])
             
         with col2:
             sig_counts = df['clinical_significance'].value_counts().reset_index()
             sig_counts.columns = ['Significance', 'Count']
-            st.plotly_chart(px.pie(sig_counts, names='Significance', values='Count', title="Clinical Significance", template="plotly_dark"), use_container_width=True)
+            render_dynamic_chart(sig_counts, 'Significance', 'Count', "Clinical Significance Distribution", default_type="Pie / Donut", key="var_sig")
+            
+        # Also top clinical conditions if available
+        valid_conds = df[df['condition'] != "Not provided"]
+        if not valid_conds.empty:
+            cond_counts = valid_conds['condition'].value_counts().head(10).reset_index()
+            cond_counts.columns = ['Condition', 'Count']
+            render_dynamic_chart(cond_counts, 'Condition', 'Count', "Top Associated Clinical Conditions", default_type="Bar (Horizontal)", key="var_cond", color_sequence=['#d500f9'])
             
     with tab2:
         st.dataframe(df[['variation_id', 'gene', 'condition', 'clinical_significance', 'review_status', 'chromosome', 'position']])
@@ -299,33 +355,33 @@ def show_gene_explorer():
     c1, c2, c3 = st.columns(3)
     
     with c1:
-        st.subheader("HPO Phenotypes")
         if not hpo_subset.empty:
             phenos = hpo_subset['hpo_name'].value_counts().head(10).reset_index()
             phenos.columns = ['Phenotype', 'Count']
-            st.plotly_chart(px.bar(phenos, x='Count', y='Phenotype', orientation='h', template="plotly_dark", title="Reported Association"), use_container_width=True)
+            render_dynamic_chart(phenos, 'Phenotype', 'Count', "HPO Phenotypes", default_type="Bar (Horizontal)", key="gene_hpo", color_sequence=['#00e5ff'])
             st.dataframe(hpo_subset[['hpo_id', 'hpo_name']].drop_duplicates(), hide_index=True)
         else:
+            st.subheader("HPO Phenotypes")
             st.info("No HPO annotations for this gene.")
             
     with c2:
-        st.subheader("ClinVar Conditions")
         if not clinvar_subset.empty:
             conds = clinvar_subset['condition'].value_counts().head(10).reset_index()
             conds.columns = ['Condition', 'Count']
-            st.plotly_chart(px.bar(conds, x='Count', y='Condition', orientation='h', template="plotly_dark", title="Source Record"), use_container_width=True)
+            render_dynamic_chart(conds, 'Condition', 'Count', "ClinVar Conditions", default_type="Bar (Horizontal)", key="gene_clin", color_sequence=['#00e676'])
             st.dataframe(clinvar_subset[['variation_id', 'condition', 'clinical_significance']].drop_duplicates().head(50), hide_index=True)
         else:
+            st.subheader("ClinVar Conditions")
             st.info("No ClinVar variants for this gene.")
             
     with c3:
-        st.subheader("GWAS Traits")
         if not gwas_subset.empty:
             traits = gwas_subset['trait'].value_counts().head(10).reset_index()
             traits.columns = ['Trait', 'Count']
-            st.plotly_chart(px.bar(traits, x='Count', y='Trait', orientation='h', template="plotly_dark", title="GWAS Trait"), use_container_width=True)
+            render_dynamic_chart(traits, 'Trait', 'Count', "GWAS Traits", default_type="Bar (Horizontal)", key="gene_gwas", color_sequence=['#ff9100'])
             st.dataframe(gwas_subset[['rs_id', 'trait', 'p_value']].drop_duplicates(), hide_index=True)
         else:
+            st.subheader("GWAS Traits")
             st.info("No GWAS associations for this gene.")
 
 
@@ -414,16 +470,14 @@ def show_disease_explorer():
     
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Top Phenotypes")
         phenos = d_df['hpo_id'].value_counts().head(10).reset_index()
         phenos.columns = ['Phenotype ID', 'Count']
-        st.plotly_chart(px.bar(phenos, x='Count', y='Phenotype ID', orientation='h', template="plotly_dark"), use_container_width=True)
+        render_dynamic_chart(phenos, 'Phenotype ID', 'Count', "Top Phenotypes", default_type="Bar (Horizontal)", key="dis_pheno", color_sequence=['#00e5ff'])
     with col2:
         if 'evidence' in d_df.columns:
-            st.subheader("Evidence Distribution")
             ev_counts = d_df['evidence'].value_counts().reset_index()
             ev_counts.columns = ['Evidence', 'Count']
-            st.plotly_chart(px.pie(ev_counts, names='Evidence', values='Count', template="plotly_dark", hole=0.4), use_container_width=True)
+            render_dynamic_chart(ev_counts, 'Evidence', 'Count', "Evidence Distribution", default_type="Pie / Donut", key="dis_ev", color_sequence=['#ffd600'])
             
     st.dataframe(d_df[['database_id', 'hpo_id', 'evidence', 'reference', 'frequency', 'onset']])
     get_csv_download_link(d_df, "disease_phenotypes.csv")
@@ -453,15 +507,13 @@ def show_gwas_explorer():
     
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Top Traits")
         tr_counts = df['trait'].value_counts().head(10).reset_index()
         tr_counts.columns = ['Trait', 'Count']
-        st.plotly_chart(px.bar(tr_counts, x='Count', y='Trait', orientation='h', template="plotly_dark"), use_container_width=True)
+        render_dynamic_chart(tr_counts, 'Trait', 'Count', "Top Traits", default_type="Bar (Horizontal)", key="gwas_tr", color_sequence=['#ff9100'])
     with col2:
-        st.subheader("Top Genes")
         gn_counts = df['mapped_gene'].value_counts().head(10).reset_index()
         gn_counts.columns = ['Gene', 'Count']
-        st.plotly_chart(px.bar(gn_counts, x='Count', y='Gene', orientation='h', template="plotly_dark"), use_container_width=True)
+        render_dynamic_chart(gn_counts, 'Gene', 'Count', "Top Genes", default_type="Bar (Horizontal)", key="gwas_gn", color_sequence=['#00e676'])
         
     st.subheader("Associations")
     st.dataframe(df[['rs_id', 'trait', 'mapped_gene', 'chromosome', 'position', 'p_value', 'study_accession']])
@@ -559,14 +611,7 @@ def show_dna_classifier():
             {"Nucleotide": n, "Percentage (%)": pcts[n], "Count": verification["nucleotide_counts"].get(n, 0)}
             for n in ["A", "C", "G", "T"]
         ])
-        fig_comp = px.bar(
-            comp_df, x="Nucleotide", y="Percentage (%)", color="Nucleotide",
-            text="Percentage (%)", template="plotly_dark",
-            color_discrete_map={"A": "#2979ff", "C": "#00e5ff", "G": "#00e676", "T": "#ff9100"},
-            title="Nucleotide Composition Distribution"
-        )
-        fig_comp.update_layout(height=260, showlegend=False)
-        st.plotly_chart(fig_comp, use_container_width=True)
+        render_dynamic_chart(comp_df, "Nucleotide", "Percentage (%)", "Nucleotide Composition Distribution", default_type="Bar (Vertical)", key="ml_comp", color_sequence=['#2979ff', '#00e5ff', '#00e676', '#ff9100'])
         
         st.markdown("---")
         st.subheader("3. Disease Classification Results")
@@ -595,19 +640,12 @@ def show_dna_classifier():
         # Candidate Diseases Probability Chart
         c_left, c_right = st.columns([3, 2])
         with c_left:
-            st.markdown("#### Candidate Diseases Probability Distribution")
             prob_items = sorted(prediction["all_probabilities"].items(), key=lambda x: x[1])
             prob_df = pd.DataFrame([
                 {"Disease Class": k, "Probability (%)": round(v * 100, 1)}
                 for k, v in prob_items
             ])
-            fig_probs = px.bar(
-                prob_df, x="Probability (%)", y="Disease Class", orientation="h",
-                text="Probability (%)", template="plotly_dark",
-                color="Probability (%)", color_continuous_scale="Blues"
-            )
-            fig_probs.update_layout(height=280, margin=dict(l=10, r=10, t=20, b=20), coloraxis_showscale=False)
-            st.plotly_chart(fig_probs, use_container_width=True)
+            render_dynamic_chart(prob_df, "Disease Class", "Probability (%)", "Candidate Diseases Probability Distribution", default_type="Bar (Horizontal)", key="ml_prob", color_sequence=['#2979ff'])
             
         with c_right:
             st.markdown("#### Candidate Conditions Table")
@@ -629,14 +667,7 @@ def show_dna_classifier():
             )
             motifs_df = pd.DataFrame(prediction["driving_motifs"])
             motifs_df.columns = ["Rank", "K-mer Motif", "Length (bp)", "Attribution Weight"]
-            
-            fig_motifs = px.bar(
-                motifs_df, x="Attribution Weight", y="K-mer Motif", orientation="h",
-                template="plotly_dark", color="Attribution Weight", color_continuous_scale="Viridis",
-                text="Attribution Weight"
-            )
-            fig_motifs.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10), coloraxis_showscale=False)
-            st.plotly_chart(fig_motifs, use_container_width=True)
+            render_dynamic_chart(motifs_df, "K-mer Motif", "Attribution Weight", "Driving K-mer Motifs", default_type="Bar (Horizontal)", key="ml_motifs", color_sequence=['#00e676'])
             st.dataframe(motifs_df, hide_index=True, use_container_width=True)
             
         with j_col2:
@@ -721,6 +752,148 @@ def show_dna_classifier():
         5. **5-Fold Cross Validation**: Cross-validation is executed strictly within `X_train` using `StratifiedKFold`, ensuring unbiased hyperparameter selection.
         """)
 
+def show_chart_studio():
+    st.title("Interactive Graph & Chart Studio")
+    st.markdown("Universal visualization workspace: Select any dataset, attributes, aggregation, and plot type on demand.")
+    
+    dataset_options = {
+        "ClinVar Variants (Curated Mutations & Clinical Significance)": ("clinvar", data.get('clinvar', pd.DataFrame())),
+        "GWAS Catalog Associations (Variant-Trait-Gene Mappings)": ("gwas", data.get('gwas', pd.DataFrame())),
+        "HPO Disease-Phenotype Annotations (Clinical Signs)": ("hpo_dis", data.get('hpo_dis', pd.DataFrame())),
+        "HPO Gene-Phenotype Annotations (Gene-Symptom Mappings)": ("hpo_gene", data.get('hpo_gene', pd.DataFrame())),
+        "Integrated Knowledge Relationships (Graph Edges)": ("rels", data.get('rels', pd.DataFrame())),
+        "ML Reference Sequences (Transcript Fragments & Diseases)": ("ml_seq", data.get('ml_seq', pd.DataFrame()))
+    }
+    
+    selected_dataset_label = st.selectbox("1. Choose Biomedical Dataset to Analyze", list(dataset_options.keys()))
+    dataset_key, df_raw = dataset_options[selected_dataset_label]
+    
+    if df_raw.empty:
+        st.warning("Selected dataset is currently empty. Run the data preparation script to populate it.")
+        return
+        
+    st.markdown("---")
+    
+    # Configuration columns
+    col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
+    
+    with col_cfg1:
+        st.markdown("##### 2. Choose Chart Type")
+        all_chart_types = [
+            "Vertical Bar Chart",
+            "Horizontal Bar Chart",
+            "Pie / Donut Chart",
+            "Line / Trend Chart",
+            "Area Chart",
+            "Scatter Plot",
+            "Treemap",
+            "Box Plot",
+            "Histogram / Distribution",
+            "Funnel Chart"
+        ]
+        selected_chart_type = st.selectbox("Chart Type", all_chart_types)
+        
+    with col_cfg2:
+        st.markdown("##### 3. Axis / Dimension Configuration")
+        available_cols = list(df_raw.columns)
+        
+        # Categorical / Dimension column
+        default_x = "gene" if "gene" in available_cols else ("mapped_gene" if "mapped_gene" in available_cols else available_cols[0])
+        x_dim = st.selectbox("Category / X-Axis Column", available_cols, index=available_cols.index(default_x))
+        
+        # Aggregation or Y-axis
+        metric_choices = ["Record Count (Frequency)"] + [c for c in available_cols if c != x_dim]
+        y_dim = st.selectbox("Metric / Y-Axis Column", metric_choices)
+        
+    with col_cfg3:
+        st.markdown("##### 4. Filtering & Aesthetics")
+        top_n = st.selectbox("Top N Categories", [5, 10, 15, 20, 50, "All"], index=1)
+        color_theme = st.selectbox("Color Theme", ["Cyberpunk Cyan", "Plotly Dark", "Viridis", "Turbo", "Plasma", "Emerald Green", "Sunset"])
+        
+        # Optional breakdown / color by
+        color_by_options = ["None"] + [c for c in available_cols if c != x_dim]
+        color_by = st.selectbox("Color / Group By (Optional)", color_by_options)
+        
+    # Process and aggregate data
+    with st.spinner("Generating custom visualization..."):
+        df_plot = df_raw.copy()
+        
+        # Color palettes
+        theme_map = {
+            "Cyberpunk Cyan": ['#00e5ff', '#2979ff', '#00e676', '#ff9100', '#d500f9', '#ffd600', '#ff1744'],
+            "Plotly Dark": px.colors.qualitative.Plotly,
+            "Viridis": px.colors.sequential.Viridis,
+            "Turbo": px.colors.sequential.Turbo,
+            "Plasma": px.colors.sequential.Plasma,
+            "Emerald Green": ['#00e676', '#00b0ff', '#1de9b6', '#76ff03', '#64ffda', '#00e5ff'],
+            "Sunset": px.colors.sequential.Sunset
+        }
+        active_palette = theme_map.get(color_theme, ['#00e5ff', '#2979ff'])
+        
+        # Prepare aggregated data if Count is requested
+        if y_dim == "Record Count (Frequency)":
+            if color_by != "None":
+                counts = df_plot.groupby([x_dim, color_by]).size().reset_index(name="Count")
+                if top_n != "All":
+                    top_x = df_plot[x_dim].value_counts().head(top_n).index
+                    counts = counts[counts[x_dim].isin(top_x)]
+                df_chart = counts
+                metric_col = "Count"
+            else:
+                counts = df_plot[x_dim].value_counts().reset_index()
+                counts.columns = [x_dim, 'Count']
+                if top_n != "All":
+                    counts = counts.head(top_n)
+                df_chart = counts
+                metric_col = "Count"
+        else:
+            # If Y is a specific column
+            df_chart = df_plot.dropna(subset=[x_dim, y_dim])
+            if top_n != "All":
+                top_x = df_chart[x_dim].value_counts().head(top_n).index
+                df_chart = df_chart[df_chart[x_dim].isin(top_x)]
+            metric_col = y_dim
+            
+        fig = None
+        color_arg = color_by if (color_by != "None" and color_by in df_chart.columns) else None
+        
+        if selected_chart_type == "Vertical Bar Chart":
+            fig = px.bar(df_chart, x=x_dim, y=metric_col, color=color_arg, template="plotly_dark", color_discrete_sequence=active_palette)
+        elif selected_chart_type == "Horizontal Bar Chart":
+            fig = px.bar(df_chart, x=metric_col, y=x_dim, color=color_arg, orientation='h', template="plotly_dark", color_discrete_sequence=active_palette)
+            fig.update_layout(yaxis={'categoryorder':'total ascending'})
+        elif selected_chart_type == "Pie / Donut Chart":
+            fig = px.pie(df_chart, names=x_dim, values=metric_col, template="plotly_dark", hole=0.4, color_discrete_sequence=active_palette)
+        elif selected_chart_type == "Line / Trend Chart":
+            fig = px.line(df_chart, x=x_dim, y=metric_col, color=color_arg, markers=True, template="plotly_dark", color_discrete_sequence=active_palette)
+        elif selected_chart_type == "Area Chart":
+            fig = px.area(df_chart, x=x_dim, y=metric_col, color=color_arg, template="plotly_dark", color_discrete_sequence=active_palette)
+        elif selected_chart_type == "Scatter Plot":
+            fig = px.scatter(df_chart, x=x_dim, y=metric_col, color=color_arg, template="plotly_dark", color_discrete_sequence=active_palette)
+        elif selected_chart_type == "Treemap":
+            path_cols = [x_dim] if color_arg is None else [color_arg, x_dim]
+            fig = px.treemap(df_chart, path=path_cols, values=metric_col, template="plotly_dark", color_discrete_sequence=active_palette)
+        elif selected_chart_type == "Box Plot":
+            fig = px.box(df_chart, x=x_dim, y=metric_col, color=color_arg, template="plotly_dark", color_discrete_sequence=active_palette)
+        elif selected_chart_type == "Histogram / Distribution":
+            fig = px.histogram(df_chart, x=x_dim, y=None if y_dim == "Record Count (Frequency)" else metric_col, color=color_arg, template="plotly_dark", color_discrete_sequence=active_palette)
+        elif selected_chart_type == "Funnel Chart":
+            fig = px.funnel(df_chart, x=metric_col, y=x_dim, color=color_arg, template="plotly_dark", color_discrete_sequence=active_palette)
+            
+        if fig:
+            fig.update_layout(
+                height=480,
+                margin=dict(l=10, r=10, t=30, b=30),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+        # Data table & download
+        with st.expander("📄 View Plotted Data & Export CSV", expanded=False):
+            st.dataframe(df_chart, hide_index=True, use_container_width=True)
+            get_csv_download_link(df_chart, f"custom_plot_{x_dim}.csv")
+
 # Router
 if selection == "Overview":
     show_overview()
@@ -734,6 +907,8 @@ elif selection == "GWAS Explorer":
     show_gwas_explorer()
 elif selection == "Network Explorer":
     show_network_explorer()
+elif selection == "Interactive Chart Studio":
+    show_chart_studio()
 elif selection == "Data Sources & Methodology":
     show_provenance()
 elif selection == "DNA Sequence Disease Classifier":
